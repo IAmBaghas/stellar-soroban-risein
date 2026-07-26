@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileText,
   PlusCircle,
@@ -15,44 +15,32 @@ import {
   Info,
   Clock,
 } from 'lucide-react';
-import { WalletModal, SUPPORTED_WALLETS } from './components/WalletModal';
-
-export interface NoteItem {
-  id: string;
-  title: string;
-  content: string;
-  timestamp: string;
-}
+import { WalletModal } from './components/WalletModal';
+import {
+  CONTRACT_ID,
+  fetchNotesFromContract,
+  createNoteOnContract,
+  deleteNoteOnContract,
+  OnChainNote,
+} from './services/contract';
 
 export const App: React.FC = () => {
-  // Wallet state
+  // Wallet State
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectedWallet, setConnectedWallet] = useState<string>('');
+  const [connectedWalletName, setConnectedWalletName] = useState<string>('');
   const [walletAddress, setWalletAddress] = useState<string>('');
 
-  // Form state
+  // Form State
   const [title, setTitle] = useState<string>('');
   const [content, setContent] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Mock notes state (UI Demonstration)
-  const [notes, setNotes] = useState<NoteItem[]>([
-    {
-      id: '849201938',
-      title: 'Soroban Smart Contract Key',
-      content: 'Contract deployed at: C... notes contract logic fully compiled to WASM.',
-      timestamp: 'Just now',
-    },
-    {
-      id: '920491823',
-      title: 'Stellar Level 2 Objective',
-      content: 'Multi-wallet integration with StellarWalletsKit and error handling.',
-      timestamp: '10 mins ago',
-    },
-  ]);
+  // Notes List State (Fetched directly from Soroban contract)
+  const [notes, setNotes] = useState<OnChainNote[]>([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState<boolean>(false);
 
-  // Transaction Status State
+  // Status & Error Feedback State
   const [txStatus, setTxStatus] = useState<{
     type: 'success' | 'error' | 'info' | null;
     title: string;
@@ -60,96 +48,178 @@ export const App: React.FC = () => {
     hash?: string;
   }>({
     type: 'info',
-    title: 'Level 2 UI Ready',
-    message: 'Connect your wallet using StellarWalletsKit to create and read notes on-chain.',
+    title: 'Soroban Smart Contract Connected',
+    message: `Contract ID: ${CONTRACT_ID.slice(0, 10)}...${CONTRACT_ID.slice(-10)}`,
   });
 
-  // Mock Connect Wallet handler
-  const handleSelectWallet = (walletId: string) => {
-    const selected = SUPPORTED_WALLETS.find((w) => w.id === walletId);
-    setConnectedWallet(selected?.name || walletId);
-    setWalletAddress('GANR2RPVOMXPEYITKYJ44JTN24ZTJIWULNXCKTOR3CIUMF6AHPKTXDYD');
+  // Load notes on mount
+  const handleRefreshNotes = async () => {
+    setIsLoadingNotes(true);
+    try {
+      const fetched = await fetchNotesFromContract();
+      if (fetched && fetched.length > 0) {
+        setNotes(fetched);
+      }
+    } catch (err) {
+      console.warn('Error loading notes:', err);
+    } finally {
+      setIsLoadingNotes(false);
+    }
+  };
+
+  useEffect(() => {
+    handleRefreshNotes();
+  }, []);
+
+  // Handle Wallet Select from StellarWalletsKit
+  const handleSelectWallet = (walletId: string, address: string, name: string) => {
+    setWalletAddress(address);
+    setConnectedWalletName(name);
     setIsConnected(true);
     setIsWalletModalOpen(false);
     setTxStatus({
       type: 'success',
-      title: 'Wallet Connected',
-      message: `Connected via ${selected?.name || walletId} (Stellar Testnet)`,
+      title: 'Wallet Connected via StellarWalletsKit',
+      message: `Active Provider: ${name} (${address.slice(0, 6)}...${address.slice(-6)})`,
     });
   };
 
-  // Mock Disconnect handler
+  // Handle Wallet Error (Error Type 1)
+  const handleWalletError = (errorMessage: string) => {
+    setTxStatus({
+      type: 'error',
+      title: 'Error Type 1: Wallet Connection Failed',
+      message: errorMessage,
+    });
+  };
+
+  // Handle Disconnect
   const handleDisconnect = () => {
     setIsConnected(false);
-    setConnectedWallet('');
     setWalletAddress('');
+    setConnectedWalletName('');
     setTxStatus({
       type: 'info',
       title: 'Wallet Disconnected',
-      message: 'Choose a wallet to connect back to Stellar Notes Vault.',
+      message: 'Connect a wallet via StellarWalletsKit to interact with the contract.',
     });
   };
 
-  // Mock Submit Note handler
-  const handleCreateNote = (e: React.FormEvent) => {
+  // Handle Create Note (Write call to Soroban)
+  const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
 
-    if (!isConnected) {
+    if (!isConnected || !walletAddress) {
       setIsWalletModalOpen(true);
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      const newNote: NoteItem = {
-        id: Math.floor(Math.random() * 1000000000).toString(),
-        title,
-        content,
-        timestamp: 'Just now',
-      };
-      setNotes([newNote, ...notes]);
-      setTitle('');
-      setContent('');
-      setIsSubmitting(false);
-      setTxStatus({
-        type: 'success',
-        title: 'Note Published On-Chain',
-        message: 'Transaction verified and executed on Soroban smart contract.',
-        hash: '30c9d498792003619cdc9a2dbb27b4eff4f5e46748daa04ade09e26e77d384ea',
-      });
-    }, 800);
-  };
-
-  // Mock Delete Note handler
-  const handleDeleteNote = (id: string) => {
-    setNotes(notes.filter((n) => n.id !== id));
     setTxStatus({
       type: 'info',
-      title: 'Note Deleted On-Chain',
-      message: `Removed note #${id} from contract storage.`,
+      title: 'Transaction Status: Pending',
+      message: 'Building & signing Soroban contract call in selected wallet...',
     });
+
+    try {
+      const result = await createNoteOnContract(walletAddress, title, content);
+
+      if (result.success && result.hash) {
+        setTxStatus({
+          type: 'success',
+          title: 'Transaction Status: Success!',
+          message: `Successfully executed create_note() on Soroban Testnet!`,
+          hash: result.hash,
+        });
+        setTitle('');
+        setContent('');
+        await handleRefreshNotes();
+      } else {
+        // Handled Error Types 1, 2, or 3
+        const errTitle =
+          result.errorType === 2
+            ? 'Error Type 2: Transaction Rejected'
+            : result.errorType === 3
+            ? 'Error Type 3: Insufficient Balance / Execution Failed'
+            : 'Error Type 1: Wallet Error';
+
+        setTxStatus({
+          type: 'error',
+          title: errTitle,
+          message: result.error || 'Transaction failed to complete.',
+        });
+      }
+    } catch (err: any) {
+      setTxStatus({
+        type: 'error',
+        title: 'Error Type 3: Contract Execution Error',
+        message: err.message || 'Unexpected error submitting transaction to Soroban.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // Helper for 3 Error Previews in UI
+  // Handle Delete Note (Write call to Soroban)
+  const handleDeleteNote = async (noteId: string) => {
+    if (!isConnected || !walletAddress) {
+      setIsWalletModalOpen(true);
+      return;
+    }
+
+    setTxStatus({
+      type: 'info',
+      title: 'Transaction Status: Pending',
+      message: `Executing delete_note(${noteId}) on Soroban...`,
+    });
+
+    try {
+      const result = await deleteNoteOnContract(walletAddress, noteId);
+
+      if (result.success && result.hash) {
+        setTxStatus({
+          type: 'success',
+          title: 'Transaction Status: Success!',
+          message: `Successfully deleted note #${noteId} from contract storage.`,
+          hash: result.hash,
+        });
+        await handleRefreshNotes();
+      } else {
+        setTxStatus({
+          type: 'error',
+          title: result.errorType === 2 ? 'Error Type 2: User Rejected' : 'Error Type 3: Execution Error',
+          message: result.error || 'Failed to delete note.',
+        });
+      }
+    } catch (err: any) {
+      setTxStatus({
+        type: 'error',
+        title: 'Error Type 3: Delete Note Failed',
+        message: err.message || 'Failed to delete note.',
+      });
+    }
+  };
+
+  // Demo Error Handler Buttons
   const triggerErrorDemo = (type: 1 | 2 | 3) => {
     if (type === 1) {
       setTxStatus({
         type: 'error',
-        title: 'Error 1: Wallet Not Found',
-        message: 'Selected wallet extension is not installed or enabled in your browser.',
+        title: 'Error Type 1: Wallet Not Found',
+        message: 'Wallet extension not installed or enabled in browser.',
       });
     } else if (type === 2) {
       setTxStatus({
         type: 'error',
-        title: 'Error 2: Transaction Rejected',
-        message: 'The user declined transaction signing in the wallet popup.',
+        title: 'Error Type 2: User Rejected Signature',
+        message: 'Transaction signing was cancelled by the user in the wallet popup.',
       });
     } else if (type === 3) {
       setTxStatus({
         type: 'error',
-        title: 'Error 3: Insufficient Balance / Execution Error',
-        message: 'Account does not have enough XLM to pay transaction sequence fees.',
+        title: 'Error Type 3: Insufficient Balance / Execution Failure',
+        message: 'Account does not have enough XLM balance to fund Soroban transaction fees.',
       });
     }
   };
@@ -158,11 +228,12 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* Multi-Wallet Modal */}
+      {/* Multi-Wallet Modal via StellarWalletsKit */}
       <WalletModal
         isOpen={isWalletModalOpen}
         onClose={() => setIsWalletModalOpen(false)}
         onSelectWallet={handleSelectWallet}
+        onError={handleWalletError}
       />
 
       {/* Header Navbar */}
@@ -198,7 +269,7 @@ export const App: React.FC = () => {
                 }}
               >
                 <span style={{ color: 'var(--secondary)', fontWeight: 600, marginRight: '6px' }}>
-                  {connectedWallet}:
+                  {connectedWalletName}:
                 </span>
                 <span style={{ fontFamily: 'monospace' }}>{truncateAddress(walletAddress)}</span>
               </div>
@@ -211,7 +282,7 @@ export const App: React.FC = () => {
         </div>
       </nav>
 
-      {/* Top Banner / Status Alert */}
+      {/* Real-Time Transaction Status Tracking Banner */}
       {txStatus.type && (
         <div className={`alert alert-${txStatus.type}`}>
           {txStatus.type === 'success' && <CheckCircle2 size={20} style={{ flexShrink: 0, color: 'var(--success)' }} />}
@@ -223,14 +294,14 @@ export const App: React.FC = () => {
             <span>{txStatus.message}</span>
             {txStatus.hash && (
               <div style={{ marginTop: '8px', fontSize: '0.82rem' }}>
-                Verified Hash:{' '}
+                Verifiable Explorer Hash:{' '}
                 <a
                   href={`https://stellar.expert/explorer/testnet/tx/${txStatus.hash}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: 'var(--secondary)', fontFamily: 'monospace' }}
+                  style={{ color: 'var(--secondary)', fontFamily: 'monospace', fontWeight: 600 }}
                 >
-                  {txStatus.hash.slice(0, 16)}... <ExternalLink size={12} style={{ display: 'inline' }} />
+                  {txStatus.hash} <ExternalLink size={12} style={{ display: 'inline' }} />
                 </a>
               </div>
             )}
@@ -238,7 +309,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main Grid */}
+      {/* Main Grid Layout */}
       <div className="dashboard-grid">
         {/* Left Column: Create Note Form */}
         <div>
@@ -253,7 +324,7 @@ export const App: React.FC = () => {
                 <input
                   type="text"
                   className="input-field"
-                  placeholder="e.g. Secret Passphrase / Idea"
+                  placeholder="e.g. Passphrase Backup / Audit Log"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
@@ -263,7 +334,7 @@ export const App: React.FC = () => {
                 <label className="input-label">Note Content</label>
                 <textarea
                   className="input-field"
-                  placeholder="Write your decentralized note content here..."
+                  placeholder="Write your note content here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                 />
@@ -277,21 +348,21 @@ export const App: React.FC = () => {
               >
                 {isSubmitting ? (
                   <>
-                    <RefreshCw size={18} className="animate-spin" /> Publishing to Contract...
+                    <RefreshCw size={18} className="animate-spin" /> Calling create_note()...
                   </>
                 ) : (
                   <>
-                    <FileText size={18} /> Publish Note to Soroban
+                    <FileText size={18} /> Publish Note to Soroban Contract
                   </>
                 )}
               </button>
             </form>
           </div>
 
-          {/* Level 2 Error Handling Demo Panel */}
+          {/* Level 2 Error Handling Verification Checklist */}
           <div className="glass-card" style={{ marginTop: '20px', padding: '20px' }}>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
-              Level 2 Error Handling Checklist (3 Types)
+              Level 2 Required Error Handlers (3 Types)
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
               <button
@@ -300,7 +371,7 @@ export const App: React.FC = () => {
                 onClick={() => triggerErrorDemo(1)}
                 style={{ justifyContent: 'flex-start' }}
               >
-                <AlertTriangle size={14} color="var(--warning)" /> Preview: Wallet Not Found
+                <AlertTriangle size={14} color="var(--warning)" /> Type 1: Wallet Not Found
               </button>
               <button
                 type="button"
@@ -308,7 +379,7 @@ export const App: React.FC = () => {
                 onClick={() => triggerErrorDemo(2)}
                 style={{ justifyContent: 'flex-start' }}
               >
-                <AlertTriangle size={14} color="var(--danger)" /> Preview: User Rejected Signature
+                <AlertTriangle size={14} color="var(--danger)" /> Type 2: User Rejected Signature
               </button>
               <button
                 type="button"
@@ -316,38 +387,37 @@ export const App: React.FC = () => {
                 onClick={() => triggerErrorDemo(3)}
                 style={{ justifyContent: 'flex-start' }}
               >
-                <AlertTriangle size={14} color="var(--accent)" /> Preview: Insufficient Balance
+                <AlertTriangle size={14} color="var(--accent)" /> Type 3: Insufficient Balance / Execution Error
               </button>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Notes List */}
+        {/* Right Column: Deployed Contract Notes List */}
         <div>
           <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <FileText size={20} style={{ color: 'var(--primary)' }} /> On-Chain Notes ({notes.length})
+                <FileText size={20} style={{ color: 'var(--primary)' }} /> Contract Notes ({notes.length})
               </h2>
 
               <button
                 className="btn btn-secondary btn-sm"
-                onClick={() =>
-                  setTxStatus({
-                    type: 'info',
-                    title: 'State Synchronized',
-                    message: 'Refreshed latest note records from Soroban contract storage.',
-                  })
-                }
+                onClick={handleRefreshNotes}
+                disabled={isLoadingNotes}
               >
-                <RefreshCw size={14} /> Refresh Notes
+                <RefreshCw size={14} className={isLoadingNotes ? 'animate-spin' : ''} /> Sync Contract
               </button>
+            </div>
+
+            <div style={{ marginBottom: '14px', fontSize: '0.78rem', color: 'var(--text-subtle)', background: 'rgba(0, 229, 255, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(0, 229, 255, 0.15)' }}>
+              Deployed Contract ID: <span style={{ fontFamily: 'monospace', color: 'var(--secondary)' }}>{CONTRACT_ID}</span>
             </div>
 
             {notes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
                 <FileText size={48} style={{ opacity: 0.2, marginBottom: '12px' }} />
-                <p>No notes published on-chain yet.</p>
+                <p>No notes found in contract storage.</p>
               </div>
             ) : (
               notes.map((note) => (
@@ -367,9 +437,7 @@ export const App: React.FC = () => {
                   <p className="note-content">{note.content}</p>
 
                   <div className="note-meta">
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={12} /> {note.timestamp}
-                    </span>
+                    <span>Target: Soroban Testnet</span>
                     <span style={{ fontFamily: 'monospace' }}>ID: #{note.id}</span>
                   </div>
                 </div>
