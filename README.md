@@ -1,99 +1,92 @@
-# Stellar Soroban - Level 1: White Belt
+# Stellar Notes Vault — Level 2 (Soroban DApp & Multi-Wallet)
 
-**Stellar Soroban - Level 1** focuses on the core fundamentals of Stellar and Soroban development on the Stellar Testnet: wallet setup, balance handling, and testnet transactions.
+**Stellar Notes Vault** is a decentralized Web3 note-taking application built on the **Stellar Testnet** using **Soroban Smart Contracts**, **React 18**, **TypeScript**, **Vite**, and **`@creit.tech/stellar-wallets-kit`**.
 
----
-
-## 🎯 Level 1 Objectives
-
-1. **Wallet Setup**: Set up a Stellar Wallet (Freighter / Stellar CLI identity) on **Stellar Testnet**.
-2. **Wallet Connection & Funding**: Fund the wallet using Stellar Friendbot to receive testnet XLM.
-3. **Balance Handling**: Check and display the connected wallet's XLM balance.
-4. **Transaction Flow**: Execute a native XLM transaction on Stellar Testnet and verify transaction feedback (Status: `Success`, Transaction Hash).
+This repository satisfies all **Level 2** requirements: multi-wallet support, contract deployment on testnet, reading/writing on-chain data, handling 3 distinct error types, and tracking transaction statuses in real-time.
 
 ---
 
-## ⚙️ Soroban & Stellar CLI Setup Instructions
+## 📋 Deployed Contract & Verification Details
 
-### 1. Prerequisites
-- **Rust & WebAssembly Target**:
+* **Deployed Contract Address**:  
+  [`CBLU4IUASQ4WUMOXBFLZRSBBLILGOH33GS4LUPKFBCCCMJCDQNMF7G2M`](https://stellar.expert/explorer/testnet/contract/CBLU4IUASQ4WUMOXBFLZRSBBLILGOH33GS4LUPKFBCCCMJCDQNMF7G2M)
+* **Verifiable Transaction Hash (Stellar Explorer)**:  
+  [`30c9d498792003619cdc9a2dbb27b4eff4f5e46748daa04ade09e26e77d384ea`](https://stellar.expert/explorer/testnet/tx/30c9d498792003619cdc9a2dbb27b4eff4f5e46748daa04ade09e26e77d384ea)
+* **Target Network**: Stellar Testnet
+* **Soroban RPC Server**: `https://soroban-testnet.stellar.org`
+
+---
+
+## ✨ Key Level 2 Features
+
+1. **Multi-Wallet Support (`StellarWalletsKit`)**:
+   - Connect using **Freighter**, **Albedo**, **xBull**, or **Rabet**.
+2. **Soroban Smart Contract Invocations**:
+   - **Read**: Simulates read-only contract calls to `get_notes()` to sync on-chain notes.
+   - **Write**: Invokes `create_note(title, content)` to record notes on Soroban instance storage.
+   - **Delete**: Invokes `delete_note(id)` to remove records on-chain.
+3. **3 Handled Error Types**:
+   - ❌ **Type 1: Wallet Not Found / Connection Failure**: Catches missing wallet extensions and prompts installation.
+   - ❌ **Type 2: User Rejected Signature**: Gracefully handles transaction cancellation in wallet popups.
+   - ❌ **Type 3: Insufficient Balance / Execution Failure**: Catches gas fee issues or simulation errors.
+4. **Real-time Transaction Tracking**:
+   - Live state updates showing `Pending` $\rightarrow$ `Success` with verifiable StellarExpert explorer links.
+
+---
+
+## 📸 Level 2 Screenshots
+
+### 1. Wallet Options Available (StellarWalletsKit)
+![Wallet Options Available](./media/2_1_Wallet.png)
+> Shows multi-wallet selection modal supporting Freighter, Albedo, xBull, and Rabet.
+
+### 2. Contract Call & Real-time State Synchronization
+![Contract Call & State Synchronization](./media/2_2_Transaction.png)
+> Demonstrates executing contract functions and rendering real-time on-chain notes directly from Soroban contract storage.
+
+### 3. Verifiable Transaction Hash on Stellar Explorer
+![Verifiable Transaction Hash](./media/2_3_Hash.png)
+> Displays the verified transaction hash on Stellar Explorer (`30c9d498792003619cdc9a2dbb27b4eff4f5e46748daa04ade09e26e77d384ea`).
+
+---
+
+## 💻 Local Setup Instructions
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Freighter Wallet](https://www.freighter.app/) extension (or any supported Stellar wallet) set to **Testnet** mode.
+
+### 1. Clone & Install
+```bash
+git clone https://github.com/IAmBaghas/stellar-soroban-risein.git
+cd stellar-soroban-risein
+npm install
+```
+
+### 2. Run Development Server
+```bash
+npm run dev
+```
+Open your browser at `http://localhost:5173`.
+
+### 3. Build for Production
+```bash
+npm run build
+```
+
+---
+
+## 📜 Soroban Smart Contract Code
+
+The Rust smart contract source code is located in `contracts/notes`:
+* `contracts/notes/src/lib.rs` (NotesContract implementation)
+* Build target command:
   ```bash
-  rustup target add wasm32v1-none
-  # or
-  rustup target add wasm32-unknown-unknown
-  ```
-- **Stellar CLI**:
-  ```bash
-  cargo install --locked stellar-cli
+  cd contracts/notes
+  stellar contract build
   ```
 
 ---
 
-## 🛠️ How to Use & Test (Level 1 Guide)
-
-### Step 1: Wallet Setup & Identity Generation
-Generate a testnet identity keypair using Stellar CLI:
-```bash
-stellar keys generate alice --network testnet
-```
-Or set up your **Freighter Wallet** browser extension and switch the network to **Testnet**.
-
----
-
-### Step 2: Fund Wallet with Testnet XLM (Friendbot)
-Fund your account using Stellar CLI Friendbot:
-```bash
-stellar keys fund alice --network testnet
-```
-*(Or use Stellar Laboratory Account Creator to request Friendbot XLM).*
-
----
-
-### Step 3: Check & Display Balance
-Check your wallet's native XLM balance on Testnet:
-```bash
-stellar keys balance alice --network testnet
-```
-Alternatively, view your account details on [Stellar Laboratory Endpoint Explorer](https://laboratory.stellar.org/#explorer?network=test).
-
----
-
-### Step 4: Execute Testnet XLM Transaction
-Send a testnet XLM payment transaction using Stellar CLI or Stellar Laboratory:
-```bash
-stellar tx payment --source alice --destination <RECIPIENT_PUBLIC_KEY> --amount 100 --network testnet
-```
-
----
-
-## 🛠️ Building the Soroban Contract
-
-The smart contract in `contracts/notes` can be compiled into WebAssembly (WASM):
-
-```bash
-# Navigate to the contract folder
-cd contracts/notes
-
-# Build the WASM contract target
-stellar contract build
-```
-
-The compiled output will be generated at `target/wasm32v1-none/release/notes.wasm`.
-
----
-
-## 📸 Level 1 Screenshots & Verification
-
-Below are the 4 verified screenshots for Level 1 completion:
-
-### 1. Wallet Connected State
-![Wallet Connected State](./media/1_1_Connection.png)
-
-### 2. Balance Displayed
-![Balance Displayed](./media/1_2_Balance.png)
-
-### 3. Successful Testnet Transaction
-![Successful Testnet Transaction](./media/1_3_Transaction.png)
-
-### 4. Transaction Result Shown to User
-![Transaction Result Shown to User](./media/1_4_Result.png)
+## 📄 License
+MIT License — Built for the Stellar Soroban RiseIn Bootcamp.
